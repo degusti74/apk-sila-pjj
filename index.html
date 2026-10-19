@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Laporan PJJ - SMAN 1 BP Mandoge</title>
+    
+    <!-- Google Fonts: Fredoka & Nunito -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS for Excel Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- jsPDF for Direct Precision A4 PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        fredoka: ['Fredoka', 'sans-serif'],
+                        nunito: ['Nunito', 'sans-serif'],
+                    },
+                    colors: {
+                        sumutGreen: '#00B074',
+                        sumutYellow: '#FFD166',
+                        sumutRed: '#EF476F',
+                        sumutDark: '#2B2D42',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body { font-family: 'Nunito', sans-serif; background-color: #F4F1DE; }
+        h1, h2, h3, .font-title { font-family: 'Fredoka', sans-serif; }
+        .neo-box {
+            border: 4px solid #2B2D42; box-shadow: 6px 6px 0px #2B2D42; border-radius: 1.5rem; transition: all 0.2s ease-in-out;
+        }
+        .neo-box-sm {
+            border: 3px solid #2B2D42; box-shadow: 4px 4px 0px #2B2D42; border-radius: 1rem;
+        }
+        .neo-btn {
+            border: 3px solid #2B2D42; box-shadow: 4px 4px 0px #2B2D42; border-radius: 1rem; font-weight: 700; transition: all 0.1s ease;
+        }
+        .neo-btn:active {
+            transform: translate(2px, 2px); box-shadow: 2px 2px 0px #2B2D42;
+        }
+        .neo-input {
+            border: 3px solid #2B2D42; border-radius: 0.8rem; outline: none; font-weight: 600; width: 100%; padding: 0.6rem 1rem; background-color: #fffbeb;
+        }
+        .neo-input:focus {
+            box-shadow: 3px 3px 0px #2B2D42; background-color: #fffdf5;
+        }
+        
+        /* Area Cetak PDF Khusus Ukuran A4 Presisi (794px x 1123px pada 96 DPI) */
+        #printArea {
+            background-color: white !important;
+            color: black !important;
+            width: 794px !important;
+            min-height: 1122px !important;
+            padding: 38px 55px !important; /* Standar margin surat resmi A4 */
+            box-sizing: border-box !important;
+            margin: 0 auto !important;
+        }
+        .print-table td {
+            padding: 5px 0;
+            vertical-align: top;
+        }
+    </style>
+</head>
+<body class="text-sumutDark">
+
+    <!-- CUSTOM TOAST & MODAL DIALOG (Pengganti Alert & Confirm agar lebih mulus) -->
+    <div id="toastNotif" class="hidden fixed bottom-6 right-6 z-[120] bg-sumutGreen text-white px-6 py-4 neo-box-sm font-bold flex items-center gap-3 shadow-lg transition-all">
+        <i class="fa-solid fa-circle-check text-xl"></i>
+        <span id="toastMsg">Berhasil!</span>
+    </div>
+
+    <div id="confirmModal" class="hidden fixed inset-0 z-[110] bg-sumutDark bg-opacity-75 flex justify-center items-center p-4">
+        <div class="bg-white neo-box p-6 max-w-sm w-full text-center space-y-4">
+            <div class="w-14 h-14 bg-red-100 text-sumutRed rounded-full flex items-center justify-center mx-auto neo-box-sm">
+                <i class="fa-solid fa-triangle-exclamation text-2xl"></i>
+            </div>
+            <h3 class="text-xl font-bold font-fredoka text-sumutDark">Konfirmasi Tindakan</h3>
+            <p id="confirmText" class="text-sm text-gray-600 font-semibold">Apakah Anda yakin?</p>
+            <div class="flex gap-3 justify-center pt-2">
+                <button id="btnConfirmYes" class="neo-btn bg-sumutRed text-white px-5 py-2 text-sm flex-1">Ya, Lanjutkan</button>
+                <button onclick="closeConfirm()" class="neo-btn bg-gray-200 text-sumutDark px-5 py-2 text-sm flex-1">Batal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- OVERLAY LOADING SAAT CETAK PDF (Mencegah Layar Blank) -->
+    <div id="loadingOverlay" class="hidden fixed inset-0 z-[100] bg-sumutDark bg-opacity-90 flex flex-col justify-center items-center text-white">
+        <i class="fa-solid fa-spinner fa-spin text-5xl mb-4 text-sumutYellow"></i>
+        <h2 class="text-2xl font-bold font-fredoka text-sumutGreen">Menyiapkan Dokumen PDF...</h2>
+        <p class="mt-2 text-sm">Mohon tunggu sebentar, sedang menyusun halaman dan gambar.</p>
+    </div>
+
+    <!-- WRAPPER UTAMA WEBSITE (Akan disembunyikan sementara saat cetak PDF) -->
+    <div id="mainUI" class="min-h-screen pb-16">
+        
+        <!-- HEADER / NAVBAR -->
+        <header class="bg-sumutYellow border-b-4 border-sumutDark py-5 px-6 sticky top-0 z-50 shadow-md">
+            <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+                <div class="flex items-center gap-4">
+                    <div class="bg-sumutRed text-white p-3.5 neo-box-sm rotate-[-2deg]">
+                        <i class="fa-solid fa-graduation-cap text-2xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-bold tracking-wide">SMAN 1 BP MANDOGE</h1>
+                        <p class="text-sm font-bold text-gray-800">Laporan Pembelajaran Jarak Jauh (PJJ)</p>
+                    </div>
+                </div>
+                <!-- Tab Switcher -->
+                <div class="flex gap-3">
+                    <button onclick="switchTab('form')" id="btnTabForm" class="neo-btn bg-sumutGreen text-white px-5 py-2.5 flex items-center gap-2">
+                        <i class="fa-solid fa-pen-to-square"></i> Form Guru
+                    </button>
+                    <button onclick="switchTab('admin')" id="btnTabAdmin" class="neo-btn bg-white px-5 py-2.5 flex items-center gap-2">
+                        <i class="fa-solid fa-shield-halved"></i> admin
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-5xl mx-auto px-4 mt-8 space-y-6">
+
+            <!-- PENGATURAN KEPALA SEKOLAH -->
+            <div class="bg-white neo-box p-5">
+                <h3 class="font-bold text-sumutDark mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-user-tie text-sumutRed"></i> Data Penandatangan (Kepala Sekolah)
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-bold mb-1">Nama Kepala Sekolah:</label>
+                        <input type="text" id="kepsekNama" value="JUNAIDI, S.Pd., M.Si" class="neo-input text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1">NIP Kepala Sekolah:</label>
+                        <input type="text" id="kepsekNip" value="198105102010011013" class="neo-input text-sm">
+                    </div>
+                </div>
+                <!-- Pengaturan Logo Kop Surat (Dari Google Drive / Upload Lokal) -->
+                <div class="mt-4 pt-3 border-t-2 border-dashed border-gray-300 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-12 h-14 border-2 border-sumutDark rounded bg-gray-50 flex items-center justify-center overflow-hidden p-1 shrink-0">
+                            <img id="previewLogoKop" src="https://drive.google.com/thumbnail?id=1T7NjzCfnBTQfX5PN08RKPDbqRPC8lBYw&sz=w300" alt="Logo" class="max-h-full max-w-full object-contain" onerror="this.style.display='none'; document.getElementById('logoFallbackText').classList.remove('hidden');">
+                            <span id="logoFallbackText" class="text-[10px] text-gray-400 font-bold text-center hidden">Tanpa Logo</span>
+                        </div>
+                        <div>
+                            <p class="text-xs font-bold text-sumutDark">Logo Kop Surat Provinsi Sumatera Utara</p>
+                            <p id="logoStatusInfo" class="text-[11px] text-gray-600">Memuat otomatis dari tautan Google Drive Anda. (Jika gagal/diblokir browser, PDF otomatis dicetak rapi tanpa logo).</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <label class="neo-btn bg-sumutYellow text-sumutDark px-3 py-1.5 text-xs cursor-pointer flex items-center gap-1.5">
+                            <i class="fa-solid fa-upload"></i> Pilih File Logo
+                            <input type="file" id="uploadLogoInput" accept="image/*" class="hidden">
+                        </label>
+                        <button type="button" onclick="hapusLogoKop()" class="neo-btn bg-gray-200 text-sumutDark px-3 py-1.5 text-xs" title="Cetak Tanpa Logo">
+                            Tanpa Logo
+                        </button>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">*Data Kepala Sekolah ini akan terlampir otomatis ke dalam cetakan PDF dan Excel.</p>
+            </div>
+
+            <!-- ================= SECTION 1: FORM INPUT GURU ================= -->
+            <section id="sectionForm" class="space-y-6">
+                <div class="bg-white neo-box p-6 md:p-8">
+                    <div class="border-b-4 border-sumutDark pb-4 mb-6 flex justify-between items-center flex-wrap gap-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-sumutGreen flex items-center gap-2">
+                                <i class="fa-solid fa-clipboard-user"></i> Form Isian Laporan PJJ
+                            </h2>
+                        </div>
+                        <span class="bg-sumutYellow px-4 py-1.5 neo-box-sm text-xs font-bold uppercase tracking-wider">Kurikulum SMAN 1 BPM</span>
+                    </div>
+
+                    <form id="pjjForm" onsubmit="handleFormSubmit(event)" class="space-y-5">
+                        <input type="hidden" id="editIndex" value="-1">
+                        
+                        <!-- Identitas -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                            <div>
+                                <label class="block font-bold mb-1 text-sm">Nama Guru:</label>
+                                <input type="text" id="namaGuru" required class="neo-input" placeholder="Contoh: Budi Santoso, S.Pd">
+                            </div>
+                            <div>
+                                <label class="block font-bold mb-1 text-sm">NIP / NUPTK:</label>
+                                <input type="text" id="nipGuru" required class="neo-input" placeholder="Masukkan NIP / NUPTK">
+                            </div>
+                            <div>
+                                <label class="block font-bold mb-1 text-sm">Mata Pelajaran:</label>
+                                <input type="text" id="mapelGuru" required class="neo-input" placeholder="Contoh: Matematika">
+                            </div>
+                        </div>
+
+                        <!-- Jadwal & Kelas -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block font-bold mb-1 text-sm">Jadwal Mengajar (Waktu PJJ):</label>
+                                <input type="datetime-local" id="jadwalMengajar" required class="neo-input">
+                            </div>
+                            <div>
+                                <label class="block font-bold mb-1 text-sm">Kelas:</label>
+                                <input type="text" id="kelasGuru" required class="neo-input" placeholder="Contoh: XI MIPA 2">
+                            </div>
+                        </div>
+
+                        <!-- Materi & Tujuan Pembelajaran (Textarea) -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block font-bold mb-1 text-sm">Materi Pelajaran:</label>
+                                <textarea id="materiGuru" required rows="4" maxlength="2000" class="neo-input" placeholder="Isi deskripsi materi pelajaran (Maks 2000 karakter)..."></textarea>
+                            </div>
+                            <div>
+                                <label class="block font-bold mb-1 text-sm">Tujuan Pembelajaran:</label>
+                                <textarea id="tujuanGuru" required rows="4" maxlength="2000" class="neo-input" placeholder="Isi tujuan pembelajaran (Maks 2000 karakter)..."></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Kehadiran -->
+                        <div class="bg-blue-50 neo-box-sm p-4 border-2 border-sumutDark">
+                            <label class="block font-bold mb-3 text-sm text-sumutDark"><i class="fa-solid fa-users-rectangle text-sumutGreen mr-1"></i> Rekapitulasi Jumlah Murid:</label>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div>
+                                    <span class="text-xs font-bold block mb-1 text-green-700">Hadir</span>
+                                    <input type="number" id="hadirMurid" min="0" value="0" required class="neo-input bg-white text-center font-bold" oninput="hitungTotalMurid()">
+                                </div>
+                                <div>
+                                    <span class="text-xs font-bold block mb-1 text-yellow-700">Izin</span>
+                                    <input type="number" id="izinMurid" min="0" value="0" required class="neo-input bg-white text-center font-bold" oninput="hitungTotalMurid()">
+                                </div>
+                                <div>
+                                    <span class="text-xs font-bold block mb-1 text-orange-700">Sakit</span>
+                                    <input type="number" id="sakitMurid" min="0" value="0" required class="neo-input bg-white text-center font-bold" oninput="hitungTotalMurid()">
+                                </div>
+                                <div>
+                                    <span class="text-xs font-bold block mb-1 text-red-700">Tanpa Keterangan</span>
+                                    <input type="number" id="alphaMurid" min="0" value="0" required class="neo-input bg-white text-center font-bold" oninput="hitungTotalMurid()">
+                                </div>
+                            </div>
+                            <div class="mt-3 text-right text-sm font-bold">
+                                Total Siswa: <span id="totalMuridBadge" class="bg-sumutYellow px-2 py-1 rounded border border-sumutDark">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Bukti Foto -->
+                        <div>
+                            <label class="block font-bold mb-1 text-sm">Dokumentasi PJJ (Upload 1 Gambar - Maks. 1 MB):</label>
+                            <input type="file" id="dokumenPJJ" accept="image/*" class="neo-input bg-white cursor-pointer" style="padding: 0.4rem;">
+                            <p class="text-xs text-gray-500 mt-1">Sertakan 1 tangkapan layar (screenshot) kegiatan Zoom/Meet/Grup Kelas. <b class="text-sumutRed">Ukuran file maksimal 1 MB.</b></p>
+                            <div id="previewContainer" class="mt-3 hidden">
+                                <span class="text-xs font-bold block text-gray-600 mb-1">Preview Gambar:</span>
+                                <img id="imagePreview" src="" alt="Preview Dokumentasi" class="h-32 neo-box-sm object-cover">
+                            </div>
+                        </div>
+
+                        <div class="flex gap-4 pt-2">
+                            <button type="submit" id="btnSimpan" class="neo-btn bg-sumutGreen text-white px-6 py-3 flex-1 text-lg">
+                                <i class="fa-solid fa-floppy-disk"></i> Simpan Laporan
+                            </button>
+                            <button type="button" onclick="resetForm()" class="neo-btn bg-gray-200 px-4 py-3">
+                                <i class="fa-solid fa-rotate-right"></i> Reset
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Tabel Riwayat Guru -->
+                <div class="bg-white neo-box p-6">
+                    <h3 class="text-xl font-bold mb-4 text-sumutDark"><i class="fa-solid fa-clock-rotate-left text-sumutRed"></i> Riwayat Laporan Saya</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse whitespace-nowrap md:whitespace-normal">
+                            <thead>
+                                <tr class="bg-sumutYellow border-b-4 border-sumutDark text-sm">
+                                    <th class="p-3 border-r-2 border-sumutDark text-center">No</th>
+                                    <th class="p-3 border-r-2 border-sumutDark">Waktu & Mapel</th>
+                                    <th class="p-3 border-r-2 border-sumutDark">Kelas & Materi</th>
+                                    <th class="p-3 border-r-2 border-sumutDark">Murid (H/I/S/T)</th>
+                                    <th class="p-3 text-center">Aksi (Cetak / Edit)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="riwayatTableBody" class="text-sm font-medium"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ================= SECTION 2: ADMIN PANEL ================= -->
+            <section id="sectionAdmin" class="space-y-6 hidden">
+                <div class="bg-white neo-box p-6 md:p-8">
+                    <div class="border-b-4 border-sumutDark pb-4 mb-6 flex justify-between items-center flex-wrap gap-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-sumutRed flex items-center gap-2"><i class="fa-solid fa-shield-halved"></i> admin</h2>
+                            <p class="text-sm text-gray-600">Pemantauan rekapitulasi isian laporan guru.</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="exportAllExcel()" class="neo-btn bg-sumutGreen text-white px-4 py-2 text-sm flex items-center gap-2">
+                                <i class="fa-solid fa-file-excel"></i> Rekap Excel Semua
+                            </button>
+                            <button onclick="clearAllData()" class="neo-btn bg-sumutRed text-white px-4 py-2 text-sm flex items-center gap-2">
+                                <i class="fa-solid fa-trash-can"></i> Hapus Semua
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div class="bg-yellow-100 neo-box-sm p-4"><p class="text-xs font-bold uppercase text-gray-600">Total Laporan Masuk</p><p id="statTotalLaporan" class="text-3xl font-extrabold mt-1">0</p></div>
+                        <div class="bg-green-100 neo-box-sm p-4"><p class="text-xs font-bold uppercase text-gray-600">Guru Berpartisipasi</p><p id="statTotalGuru" class="text-3xl font-extrabold mt-1">0</p></div>
+                        <div class="bg-red-100 neo-box-sm p-4"><p class="text-xs font-bold uppercase text-gray-600">Kelas Terdata</p><p id="statTotalKelas" class="text-3xl font-extrabold mt-1">0</p></div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-sumutYellow border-b-4 border-sumutDark text-sm">
+                                    <th class="p-3 border-r-2 border-sumutDark text-center">No</th>
+                                    <th class="p-3 border-r-2 border-sumutDark">Guru & Mapel</th>
+                                    <th class="p-3 border-r-2 border-sumutDark">Waktu PJJ</th>
+                                    <th class="p-3 border-r-2 border-sumutDark">Materi & Bukti</th>
+                                    <th class="p-3 text-center">Aksi (Cetak)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminTableBody" class="text-sm font-medium"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ================= AREA CETAK DOKUMEN RESMI (UKURAN KERTAS A4) ================= -->
+    <div id="printArea" class="hidden bg-white font-nunito text-black text-sm">
+        
+        <!-- KOP SURAT (Format Sesuai Gambar Referensi) -->
+        <div class="flex items-center justify-between border-b-[3px] border-black pb-3 mb-1" style="border-bottom-style: solid;">
+            <!-- Kolom Logo Sumatera Utara (Di-render via Canvas PNG agar 100% tampil di PDF) -->
+            <div class="w-[15%] flex justify-start items-center">
+                <img id="logoSumutImg" src="" alt="Logo Sumut" class="w-[82px] h-auto object-contain">
+            </div>
+            <!-- Kolom Teks Institusi -->
+            <div class="w-[85%] text-center pr-6">
+                <h2 class="text-[16px] font-bold uppercase m-0 leading-tight tracking-wide">PEMERINTAH PROVINSI SUMATERA UTARA</h2>
+                <h2 class="text-[16px] font-bold uppercase m-0 leading-tight tracking-wide">DINAS PENDIDIKAN</h2>
+                <h1 class="text-[21px] font-extrabold uppercase m-0 leading-tight tracking-wider">SMAN 1 BP MANDOGE</h1>
+                <p class="text-[11px] font-semibold mt-1 mb-0">Jalan Besar Desa Suka Makmur Kec. Bandar Pasir Mandoge Kab. Asahan Kode Pos 21262</p>
+                <p class="text-[11px] font-bold m-0">E-mail : <span class="text-blue-700 underline">sma1bpmandoge@gmail.com</span></p>
+            </div>
+        </div>
+        <hr class="border-t border-black mb-5 mt-[2px]">
+
+        <!-- JUDUL SURAT -->
+        <div class="text-center my-4">
+            <h3 class="text-[15px] font-bold uppercase inline-block border-b-2 border-black leading-tight pb-0.5">LAPORAN PELAKSANAAN PEMBELAJARAN JARAK JAUH (PJJ)</h3>
+            <p class="text-[12px] font-semibold mt-1">Tahun Ajaran 2026/2027</p>
+        </div>
+
+        <!-- TABEL DATA LAPORAN -->
+        <table class="w-full mb-5 text-[13px] print-table border-collapse">
+            <tr>
+                <td class="font-bold w-[28%]">Nama Guru</td>
+                <td class="w-[2%]">:</td>
+                <td class="w-[70%] font-semibold" id="printNama"></td>
+            </tr>
+            <tr>
+                <td class="font-bold">NIP / NUPTK</td>
+                <td>:</td>
+                <td id="printNip"></td>
+            </tr>
+            <tr>
+                <td class="font-bold">Mata Pelajaran</td>
+                <td>:</td>
+                <td id="printMapel"></td>
+            </tr>
+            <tr>
+                <td class="font-bold">Kelas</td>
+                <td>:</td>
+                <td id="printKelas"></td>
+            </tr>
+            <tr>
+                <td class="font-bold">Jadwal Mengajar</td>
+                <td>:</td>
+                <td id="printJadwal"></td>
+            </tr>
+            <tr>
+                <td class="font-bold">Materi Pelajaran</td>
+                <td>:</td>
+                <td><div id="printMateri" class="whitespace-pre-wrap text-justify leading-relaxed"></div></td>
+            </tr>
+            <tr>
+                <td class="font-bold">Tujuan Pembelajaran</td>
+                <td>:</td>
+                <td><div id="printTujuan" class="whitespace-pre-wrap text-justify leading-relaxed"></div></td>
+            </tr>
+            <tr>
+                <td class="font-bold">Rekap Kehadiran Murid</td>
+                <td>:</td>
+                <td class="font-semibold">
+                    Hadir: <span id="printHadir">0</span> &nbsp;|&nbsp; 
+                    Izin: <span id="printIzin">0</span> &nbsp;|&nbsp; 
+                    Sakit: <span id="printSakit">0</span> &nbsp;|&nbsp; 
+                    Tanpa Keterangan: <span id="printAlpha">0</span> 
+                    &nbsp;(Total: <span id="printTotalMurid">0</span> Siswa)
+                </td>
+            </tr>
+        </table>
+
+        <!-- BUKTI FOTO -->
+        <div class="mb-6" id="printFotoWrapper">
+            <p class="font-bold mb-2 text-[13px]">Dokumentasi PJJ:</p>
+            <div class="border-[2px] border-black p-2 inline-block rounded bg-gray-50">
+                <img id="printImg" src="" alt="Dokumentasi PJJ" class="max-w-[420px] max-h-[230px] object-contain block mx-auto">
+            </div>
+        </div>
+
+        <!-- TANDA TANGAN (Sejajar Rata Kiri & Kanan Sesuai Standar Surat) -->
+        <div class="mt-8 text-[13px] leading-snug page-break-inside-avoid">
+            <div class="flex justify-between items-start">
+                <!-- Kolom Kiri: Kepala Sekolah -->
+                <div class="w-[45%]">
+                    <div class="invisible mb-1">BP. Mandoge, 00 Bulan 0000</div>
+                    <div class="font-bold">Mengetahui,</div>
+                    <div class="font-bold">Kepala SMAN 1 BP Mandoge</div>
+                    <div class="h-[75px]"></div> <!-- Ruang Tanda Tangan -->
+                    <div class="font-bold uppercase underline" id="printNamaKepsek">JUNAIDI, S.Pd., M.Si</div>
+                    <div>NIP. <span id="printNipKepsek">198105102010011013</span></div>
+                </div>
+                
+                <!-- Kolom Kanan: Guru Mata Pelajaran -->
+                <div class="w-[45%]">
+                    <div class="mb-1 font-semibold">BP. Mandoge, <span id="printTanggalSurat"></span></div>
+                    <div class="invisible font-bold">Mengetahui,</div>
+                    <div class="font-bold">Guru Mata Pelajaran</div>
+                    <div class="h-[75px]"></div> <!-- Ruang Tanda Tangan -->
+                    <div class="font-bold uppercase underline" id="printNamaGuruSign"></div>
+                    <div>NIP. <span id="printNipGuruSign"></span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ================= JAVASCRIPT LOGIC ================= -->
+    <script>
+        // Inisialisasi Data Storage
+        let pjjDataList = JSON.parse(localStorage.getItem('smandoge_pjj_data')) || [];
+        let uploadedImageBase64 = "";
+        let confirmActionCallback = null;
+
+        // Fungsi Notifikasi Toast & Modal (Bebas Alert/Confirm Browser)
+        function showToast(msg, isError = false) {
+            const toast = document.getElementById('toastNotif');
+            const toastMsg = document.getElementById('toastMsg');
+            toastMsg.innerText = msg;
+            toast.className = `fixed bottom-6 right-6 z-[120] ${isError ? 'bg-sumutRed' : 'bg-sumutGreen'} text-white px-6 py-4 neo-box-sm font-bold flex items-center gap-3 shadow-lg transition-all`;
+            toast.classList.remove('hidden');
+            setTimeout(() => { toast.classList.add('hidden'); }, 3000);
+        }
+
+        function showConfirm(text, callback) {
+            document.getElementById('confirmText').innerText = text;
+            document.getElementById('confirmModal').classList.remove('hidden');
+            confirmActionCallback = callback;
+        }
+
+        function closeConfirm() {
+            document.getElementById('confirmModal').classList.add('hidden');
+            confirmActionCallback = null;
+        }
+
+        document.getElementById('btnConfirmYes').addEventListener('click', function() {
+            if (confirmActionCallback) confirmActionCallback();
+            closeConfirm();
+        });
+
+        // ID File Google Drive dari tautan: https://drive.google.com/file/d/1T7NjzCfnBTQfX5PN08RKPDbqRPC8lBYw/view?usp=sharing
+        const GDRIVE_LOGO_ID = '1T7NjzCfnBTQfX5PN08RKPDbqRPC8lBYw';
+        let customLogoBase64 = localStorage.getItem('smandoge_custom_logo') || null;
+        let useLogoInPDF = localStorage.getItem('smandoge_use_logo') !== 'false';
+
+        // Coba mengambil dan mengonversi gambar dari Google Drive ke Base64 agar bisa masuk ke jsPDF
+        async function tryLoadGDriveLogo() {
+            if (!useLogoInPDF) {
+                updateLogoPreviewUI(null);
+                return null;
+            }
+            if (customLogoBase64) {
+                updateLogoPreviewUI(customLogoBase64);
+                return customLogoBase64;
+            }
+
+            // Daftar URL langsung & proxy CORS aman untuk mengambil gambar dari Google Drive
+            const candidateUrls = [
+                `https://drive.google.com/thumbnail?id=${GDRIVE_LOGO_ID}&sz=w400`,
+                `https://lh3.googleusercontent.com/d/${GDRIVE_LOGO_ID}=w400`,
+                `https://images.weserv.nl/?url=${encodeURIComponent(`https://drive.google.com/uc?export=view&id=${GDRIVE_LOGO_ID}`)}&w=400&output=png`,
+                `https://wsrv.nl/?url=${encodeURIComponent(`https://drive.google.com/thumbnail?id=${GDRIVE_LOGO_ID}&sz=w400`)}&output=png`
+            ];
+
+            for (const url of candidateUrls) {
+                try {
+                    const dataUrl = await fetchImageAsBase64(url);
+                    if (dataUrl) {
+                        customLogoBase64 = dataUrl;
+                        localStorage.setItem('smandoge_custom_logo', dataUrl);
+                        updateLogoPreviewUI(dataUrl);
+                        return dataUrl;
+                    }
+                } catch (e) {
+                    // Lanjut ke URL kandidat berikutnya jika terblokir CORS
+                }
+            }
+
+            // Jika semua terblokir CORS oleh browser, kembalikan null (cetak bersih tanpa logo)
+            return null;
+        }
+
+        function fetchImageAsBase64(url) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.crossOrigin = 'Anonymous';
+                const timer = setTimeout(() => resolve(null), 3500);
+                img.onload = function() {
+                    clearTimeout(timer);
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.naturalWidth || 240;
+                        canvas.height = img.naturalHeight || 280;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0);
+                        resolve(canvas.toDataURL('image/png'));
+                    } catch (err) {
+                        resolve(null);
+                    }
+                };
+                img.onerror = function() {
+                    clearTimeout(timer);
+                    resolve(null);
+                };
+                img.src = url;
+            });
+        }
+
+        function updateLogoPreviewUI(dataUrl) {
+            const previewEl = document.getElementById('previewLogoKop');
+            const fallbackText = document.getElementById('logoFallbackText');
+            const statusInfo = document.getElementById('logoStatusInfo');
+            const printLogoEl = document.getElementById('logoSumutImg');
+
+            if (dataUrl && useLogoInPDF) {
+                if (previewEl) {
+                    previewEl.src = dataUrl;
+                    previewEl.style.display = 'block';
+                }
+                if (fallbackText) fallbackText.classList.add('hidden');
+                if (statusInfo) statusInfo.innerText = "Logo Provinsi Sumatera Utara siap digunakan pada cetakan PDF.";
+                if (printLogoEl) printLogoEl.src = dataUrl;
+            } else if (!useLogoInPDF) {
+                if (previewEl) previewEl.style.display = 'none';
+                if (fallbackText) fallbackText.classList.remove('hidden');
+                if (statusInfo) statusInfo.innerText = "Mode Tanpa Logo aktif. Kop surat PDF akan dicetak bersih tanpa gambar logo.";
+            }
+        }
+
+        // Jika pengguna memilih file logo langsung dari perangkat (100% bebas blokir CORS)
+        document.getElementById('uploadLogoInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+                    customLogoBase64 = canvas.toDataURL('image/png');
+                    useLogoInPDF = true;
+                    localStorage.setItem('smandoge_custom_logo', customLogoBase64);
+                    localStorage.setItem('smandoge_use_logo', 'true');
+                    updateLogoPreviewUI(customLogoBase64);
+                    showToast("Logo Kop Surat berhasil dipasang!");
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        function hapusLogoKop() {
+            useLogoInPDF = false;
+            customLogoBase64 = null;
+            localStorage.removeItem('smandoge_custom_logo');
+            localStorage.setItem('smandoge_use_logo', 'false');
+            updateLogoPreviewUI(null);
+            showToast("Mode Tanpa Logo diaktifkan untuk cetakan PDF.");
+        }
+
+        // Jalankan pemuatan logo dari Google Drive saat halaman dibuka
+        tryLoadGDriveLogo();
+
+        // Fungsi Preview Gambar Upload (Batas Maksimal 1 MB) & Kompresi Otomatis ke PNG/JPEG
+        document.getElementById('dokumenPJJ').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                // Validasi ukuran file maksimal 1 MB (1.048.576 bytes)
+                const maxSizeBytes = 1 * 1024 * 1024;
+                if (file.size > maxSizeBytes) {
+                    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                    showToast(`Ukuran gambar terlalu besar (${fileSizeMB} MB)! Maksimal ukuran file adalah 1 MB.`, true);
+                    e.target.value = ""; // Reset input file
+                    document.getElementById('previewContainer').classList.add('hidden');
+                    uploadedImageBase64 = "";
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800;
+                        const MAX_HEIGHT = 600;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_WIDTH) {
+                                height = Math.round(height * (MAX_WIDTH / width));
+                                width = MAX_WIDTH;
+                            }
+                        } else {
+                            if (height > MAX_HEIGHT) {
+                                width = Math.round(width * (MAX_HEIGHT / height));
+                                height = MAX_HEIGHT;
+                            }
+                        }
+                        
+                        canvas.width = width;
+                        canvas.height = height;
+                        
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = "#FFFFFF";
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        
+                        uploadedImageBase64 = canvas.toDataURL('image/jpeg', 0.85);
+                        
+                        document.getElementById('imagePreview').src = uploadedImageBase64;
+                        document.getElementById('previewContainer').classList.remove('hidden');
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Hitung total murid otomatis
+        function hitungTotalMurid() {
+            const h = parseInt(document.getElementById('hadirMurid').value) || 0;
+            const i = parseInt(document.getElementById('izinMurid').value) || 0;
+            const s = parseInt(document.getElementById('sakitMurid').value) || 0;
+            const a = parseInt(document.getElementById('alphaMurid').value) || 0;
+            document.getElementById('totalMuridBadge').innerText = (h + i + s + a);
+        }
+
+        // Navigasi Tab
+        function switchTab(tab) {
+            const formSec = document.getElementById('sectionForm');
+            const adminSec = document.getElementById('sectionAdmin');
+            const btnForm = document.getElementById('btnTabForm');
+            const btnAdmin = document.getElementById('btnTabAdmin');
+
+            if (tab === 'form') {
+                formSec.classList.remove('hidden');
+                adminSec.classList.add('hidden');
+                btnForm.className = "neo-btn bg-sumutGreen text-white px-5 py-2.5 flex items-center gap-2";
+                btnAdmin.className = "neo-btn bg-white px-5 py-2.5 flex items-center gap-2";
+            } else {
+                formSec.classList.add('hidden');
+                adminSec.classList.remove('hidden');
+                btnAdmin.className = "neo-btn bg-sumutRed text-white px-5 py-2.5 flex items-center gap-2";
+                btnForm.className = "neo-btn bg-white px-5 py-2.5 flex items-center gap-2";
+                renderAdminTable();
+            }
+        }
+
+        function handleFormSubmit(e) {
+            e.preventDefault();
+            const index = document.getElementById('editIndex').value;
+
+            const newData = {
+                nama: document.getElementById('namaGuru').value,
+                nip: document.getElementById('nipGuru').value,
+                mapel: document.getElementById('mapelGuru').value,
+                jadwal: document.getElementById('jadwalMengajar').value,
+                kelas: document.getElementById('kelasGuru').value,
+                materi: document.getElementById('materiGuru').value,
+                tujuan: document.getElementById('tujuanGuru').value, // Data Baru
+                hadir: document.getElementById('hadirMurid').value,
+                izin: document.getElementById('izinMurid').value,
+                sakit: document.getElementById('sakitMurid').value,
+                alpha: document.getElementById('alphaMurid').value,
+                gambar: uploadedImageBase64 || (index !== "-1" ? pjjDataList[index].gambar : "")
+            };
+
+            if (index === "-1") {
+                pjjDataList.push(newData);
+            } else {
+                pjjDataList[index] = newData;
+                document.getElementById('editIndex').value = "-1";
+                document.getElementById('btnSimpan').innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Simpan Laporan`;
+            }
+
+            localStorage.setItem('smandoge_pjj_data', JSON.stringify(pjjDataList));
+            resetForm();
+            renderTables();
+            showToast("Laporan PJJ berhasil disimpan!");
+        }
+
+        function resetForm() {
+            document.getElementById('pjjForm').reset();
+            document.getElementById('editIndex').value = "-1";
+            document.getElementById('previewContainer').classList.add('hidden');
+            uploadedImageBase64 = "";
+            document.getElementById('totalMuridBadge').innerText = "0";
+            document.getElementById('btnSimpan').innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Simpan Laporan`;
+        }
+
+        function renderTables() {
+            const tbody = document.getElementById('riwayatTableBody');
+            tbody.innerHTML = "";
+
+            if (pjjDataList.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-gray-500 italic">Belum ada laporan yang diinput.</td></tr>`;
+                return;
+            }
+
+            pjjDataList.forEach((item, index) => {
+                const totalM = parseInt(item.hadir) + parseInt(item.izin) + parseInt(item.sakit) + parseInt(item.alpha);
+                const dt = new Date(item.jadwal);
+                const waktu = `${dt.getDate()}/${dt.getMonth()+1}/${dt.getFullYear()} - ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+                
+                const tr = document.createElement('tr');
+                tr.className = "border-b-2 border-sumutDark hover:bg-yellow-50";
+                tr.innerHTML = `
+                    <td class="p-3 border-r-2 border-sumutDark font-bold text-center">${index + 1}</td>
+                    <td class="p-3 border-r-2 border-sumutDark"><div class="font-bold text-sm">${waktu}</div><div class="text-xs text-gray-600">${item.mapel}</div></td>
+                    <td class="p-3 border-r-2 border-sumutDark"><div class="font-bold text-sm">Kls: ${item.kelas}</div><div class="text-xs italic text-gray-700 w-48 truncate">${item.materi}</div></td>
+                    <td class="p-3 border-r-2 border-sumutDark text-xs">H:${item.hadir} | I:${item.izin} | S:${item.sakit} | T:${item.alpha} <br><b>Tot: ${totalM}</b></td>
+                    <td class="p-3 text-center space-y-1">
+                        <button onclick="cetakLaporan(${index})" class="bg-sumutGreen text-white px-2 py-1 neo-box-sm text-xs font-bold" title="Unduh PDF"><i class="fa-solid fa-file-pdf"></i></button>
+                        <button onclick="downloadExcelSingle(${index})" class="bg-blue-500 text-white px-2 py-1 neo-box-sm text-xs font-bold" title="Download Excel"><i class="fa-solid fa-file-excel"></i></button>
+                        <button onclick="editData(${index})" class="bg-yellow-400 text-sumutDark px-2 py-1 neo-box-sm text-xs font-bold" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="deleteData(${index})" class="bg-sumutRed text-white px-2 py-1 neo-box-sm text-xs font-bold" title="Hapus"><i class="fa-solid fa-trash"></i></button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderAdminTable() {
+            const tbody = document.getElementById('adminTableBody');
+            tbody.innerHTML = "";
+
+            document.getElementById('statTotalLaporan').innerText = pjjDataList.length;
+            document.getElementById('statTotalGuru').innerText = [...new Set(pjjDataList.map(item => item.nip))].length;
+            document.getElementById('statTotalKelas').innerText = [...new Set(pjjDataList.map(item => item.kelas))].length;
+
+            if (pjjDataList.length === 0) return;
+
+            pjjDataList.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b-2 border-sumutDark hover:bg-red-50 text-xs";
+                tr.innerHTML = `
+                    <td class="p-2 border-r-2 border-sumutDark font-bold text-center">${index + 1}</td>
+                    <td class="p-2 border-r-2 border-sumutDark"><div class="font-extrabold text-sm">${item.nama}</div><div>${item.mapel}</div></td>
+                    <td class="p-2 border-r-2 border-sumutDark">${item.jadwal.replace('T', ' ')}</td>
+                    <td class="p-2 border-r-2 border-sumutDark"><div class="w-48 truncate font-semibold">${item.materi}</div>${item.gambar ? '<span class="text-blue-600 font-bold"><i class="fa-solid fa-check"></i> Ada Foto</span>' : '<span class="text-gray-400">Tanpa Foto</span>'}</td>
+                    <td class="p-2 text-center space-x-1">
+                        <button onclick="cetakLaporan(${index})" class="bg-sumutGreen text-white px-2 py-1 neo-box-sm font-bold" title="PDF">PDF</button>
+                        <button onclick="downloadExcelSingle(${index})" class="bg-blue-600 text-white px-2 py-1 neo-box-sm font-bold" title="Excel">XLSX</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function editData(index) {
+            const item = pjjDataList[index];
+            document.getElementById('editIndex').value = index;
+            document.getElementById('namaGuru').value = item.nama;
+            document.getElementById('nipGuru').value = item.nip;
+            document.getElementById('mapelGuru').value = item.mapel;
+            document.getElementById('jadwalMengajar').value = item.jadwal;
+            document.getElementById('kelasGuru').value = item.kelas;
+            document.getElementById('materiGuru').value = item.materi;
+            document.getElementById('tujuanGuru').value = item.tujuan || ""; // Handle data lama yg belum ada tujuan
+            document.getElementById('hadirMurid').value = item.hadir;
+            document.getElementById('izinMurid').value = item.izin;
+            document.getElementById('sakitMurid').value = item.sakit;
+            document.getElementById('alphaMurid').value = item.alpha;
+            
+            if (item.gambar) {
+                document.getElementById('imagePreview').src = item.gambar;
+                document.getElementById('previewContainer').classList.remove('hidden');
+                uploadedImageBase64 = item.gambar;
+            }
+
+            hitungTotalMurid();
+            document.getElementById('btnSimpan').innerHTML = `<i class="fa-solid fa-pen"></i> Update Laporan`;
+            switchTab('form');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function deleteData(index) {
+            showConfirm("Hapus laporan ini secara permanen?", function() {
+                pjjDataList.splice(index, 1);
+                localStorage.setItem('smandoge_pjj_data', JSON.stringify(pjjDataList));
+                renderTables();
+                renderAdminTable();
+                showToast("Laporan telah dihapus.", true);
+            });
+        }
+        function clearAllData() {
+            showConfirm("PERINGATAN: Semua data laporan guru akan dihapus permanen! Lanjutkan?", function() {
+                pjjDataList = [];
+                localStorage.removeItem('smandoge_pjj_data');
+                renderTables();
+                renderAdminTable();
+                showToast("Semua data berhasil dibersihkan.", true);
+            });
+        }
+
+
+        // Helper untuk menormalisasi gambar ke JPEG murni beserta dimensinya
+        function normalizeImageForPDF(dataUrl) {
+            return new Promise((resolve) => {
+                if (!dataUrl || !dataUrl.startsWith('data:image')) {
+                    resolve(null);
+                    return;
+                }
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width || 600;
+                    canvas.height = img.height || 400;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve({
+                        data: canvas.toDataURL('image/jpeg', 0.92),
+                        width: canvas.width,
+                        height: canvas.height
+                    });
+                };
+                img.onerror = function() { resolve(null); };
+                img.src = dataUrl;
+            });
+        }
+
+        // =======================================================================================
+        // FUNGSI UNDUH PDF KERTAS A4 PRESISI (1 HALAMAN UTUH, LOGO & FOTO 100% TAMPIL)
+        // =======================================================================================
+        async function cetakLaporan(index) {
+            const item = pjjDataList[index];
+            const totalM = (parseInt(item.hadir) || 0) + (parseInt(item.izin) || 0) + (parseInt(item.sakit) || 0) + (parseInt(item.alpha) || 0);
+
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            loadingOverlay.classList.remove('hidden');
+
+            try {
+                const { jsPDF } = window.jspdf;
+                // Inisialisasi Kertas A4 Portrait (Lebar: 210 mm, Tinggi: 297 mm)
+                const doc = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+
+                const marginLeft = 20;
+                const pageWidth = 210;
+
+                // 1. CEK LOGO DARI TAUTAN GOOGLE DRIVE (ATAU TANPA LOGO JIKA TIDAK BISA DIMUAT)
+                let logoDataUrl = null;
+                if (useLogoInPDF) {
+                    logoDataUrl = customLogoBase64 || await tryLoadGDriveLogo();
+                }
+
+                let textCenterX = 105; // Default rata tengah penuh jika tanpa logo
+                if (logoDataUrl) {
+                    try {
+                        doc.addImage(logoDataUrl, 'PNG', marginLeft, 12, 22, 26);
+                        textCenterX = 115; // Geser sedikit ke kanan jika logo tampil
+                    } catch (err) {
+                        textCenterX = 105; // Jika gagal render logo, tetap rata tengah bersih tanpa logo
+                    }
+                }
+
+                // 2. TEKS KOP SURAT (RATA TENGAH PRESISI)
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(12);
+                doc.setTextColor(0, 0, 0);
+                doc.text('PEMERINTAH PROVINSI SUMATERA UTARA', textCenterX, 17, { align: 'center' });
+                doc.text('DINAS PENDIDIKAN', textCenterX, 23, { align: 'center' });
+                
+                doc.setFontSize(15);
+                doc.text('SMAN 1 BP MANDOGE', textCenterX, 30, { align: 'center' });
+
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(8.5);
+                doc.text('Jalan Besar Desa Suka Makmur Kec. Bandar Pasir Mandoge Kab. Asahan Kode Pos 21262', textCenterX, 35, { align: 'center' });
+                
+                doc.setFont('helvetica', 'bold');
+                doc.text('E-mail : sma1bpmandoge@gmail.com', textCenterX, 39.5, { align: 'center' });
+
+                // Garis Ganda Kop Surat (Tidak akan pernah terpotong lagi)
+                doc.setLineWidth(0.8);
+                doc.line(marginLeft, 43, pageWidth - marginLeft, 43);
+                doc.setLineWidth(0.25);
+                doc.line(marginLeft, 44.2, pageWidth - marginLeft, 44.2);
+
+                // 3. JUDUL DOKUMEN LAPORAN
+                let currentY = 53;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(11);
+                const titleText = 'LAPORAN PELAKSANAAN PEMBELAJARAN JARAK JAUH (PJJ)';
+                doc.text(titleText, 105, currentY, { align: 'center' });
+                const titleWidth = doc.getTextWidth(titleText);
+                doc.setLineWidth(0.4);
+                doc.line(105 - (titleWidth / 2), currentY + 1, 105 + (titleWidth / 2), currentY + 1);
+
+                currentY += 5.5;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9.5);
+                doc.text('Tahun Ajaran 2026/2027', 105, currentY, { align: 'center' });
+
+                // 4. TABEL DATA ISIAN GURU
+                currentY += 9;
+                const labelX = marginLeft;
+                const colonX = 67;
+                const valueX = 71;
+                const maxValWidth = 119; // Batas lebar teks agar rapi di kanan (190 - 71)
+
+                function addRow(label, value, isBoldValue = false) {
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(9.5);
+                    doc.text(label, labelX, currentY);
+                    doc.text(':', colonX, currentY);
+                    
+                    doc.setFont('helvetica', isBoldValue ? 'bold' : 'normal');
+                    const cleanText = String(value || '-');
+                    let lines = doc.splitTextToSize(cleanText, maxValWidth);
+                    
+                    // Batasi maksimal 8 baris per kolom agar 100% muat dalam 1 Halaman A4
+                    if (lines.length > 8) {
+                        lines = lines.slice(0, 8);
+                        lines[7] = lines[7] + '...';
+                    }
+                    
+                    doc.text(lines, valueX, currentY);
+                    currentY += (lines.length * 4.7) + 1.8;
+                }
+
+                addRow('Nama Guru', item.nama, true);
+                addRow('NIP / NUPTK', item.nip);
+                addRow('Mata Pelajaran', item.mapel);
+                addRow('Kelas', item.kelas);
+                addRow('Jadwal Mengajar', item.jadwal.replace('T', ' Pukul '));
+                addRow('Materi Pelajaran', item.materi);
+                addRow('Tujuan Pembelajaran', item.tujuan || '-');
+                addRow('Rekap Kehadiran Murid', `Hadir: ${item.hadir}  |  Izin: ${item.izin}  |  Sakit: ${item.sakit}  |  Tanpa Keterangan: ${item.alpha}  (Total: ${totalM} Siswa)`, true);
+
+                // 5. DOKUMENTASI FOTO PJJ (DIJAMIN TAMPIL DI DALAM KOTAK)
+                currentY += 2;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(9.5);
+                doc.text('Dokumentasi PJJ:', labelX, currentY);
+                currentY += 3;
+
+                // Hitung sisa ruang agar tanda tangan di bawah selalu muat 1 halaman A4 (297mm)
+                const maxBottomBeforeSign = 232;
+                let boxHeight = Math.min(54, Math.max(36, maxBottomBeforeSign - currentY));
+                let boxWidth = 96;
+
+                // Bingkai Kotak Dokumentasi
+                doc.setDrawColor(0, 0, 0);
+                doc.setLineWidth(0.35);
+                doc.setFillColor(250, 250, 250);
+                doc.rect(labelX, currentY, boxWidth, boxHeight, 'FD');
+
+                if (item.gambar && item.gambar.startsWith('data:image')) {
+                    const imgObj = await normalizeImageForPDF(item.gambar);
+                    if (imgObj) {
+                        const pad = 2;
+                        const availW = boxWidth - (pad * 2);
+                        const availH = boxHeight - (pad * 2);
+                        const imgRatio = imgObj.width / imgObj.height;
+                        
+                        let drawW = availW;
+                        let drawH = drawW / imgRatio;
+                        if (drawH > availH) {
+                            drawH = availH;
+                            drawW = drawH * imgRatio;
+                        }
+                        // Posisikan foto persis di tengah bingkai
+                        const imgX = labelX + pad + ((availW - drawW) / 2);
+                        const imgY = currentY + pad + ((availH - drawH) / 2);
+                        doc.addImage(imgObj.data, 'JPEG', imgX, imgY, drawW, drawH);
+                    }
+                } else {
+                    doc.setFont('helvetica', 'italic');
+                    doc.setFontSize(8.5);
+                    doc.setTextColor(130, 130, 130);
+                    doc.text('(Tidak ada lampiran foto dokumentasi)', labelX + (boxWidth / 2), currentY + (boxHeight / 2), { align: 'center' });
+                    doc.setTextColor(0, 0, 0);
+                }
+
+                currentY += boxHeight + 10;
+
+                // 6. BAGIAN TANDA TANGAN (SEJAJAR RATA KIRI & KANAN DALAM 1 HALAMAN A4)
+                const signLeftX = marginLeft;
+                const signRightX = 125;
+
+                const options = { year: 'numeric', month: 'long', day: 'numeric' };
+                const tanggalSurat = new Date().toLocaleDateString('id-ID', options);
+                const kepsekNama = (document.getElementById('kepsekNama').value || "JUNAIDI, S.Pd., M.Si").toUpperCase();
+                const kepsekNip = document.getElementById('kepsekNip').value || "198105102010011013";
+                const guruNama = (item.nama || "").toUpperCase();
+                const guruNip = item.nip || "";
+
+                // Baris 1: Tanggal di sebelah kanan, Mengetahui di sebelah kiri
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9.5);
+                doc.text(`BP. Mandoge, ${tanggalSurat}`, signRightX, currentY);
+                doc.setFont('helvetica', 'bold');
+                doc.text('Mengetahui,', signLeftX, currentY);
+
+                // Baris 2: Jabatan Sejajar Kiri & Kanan
+                currentY += 5;
+                doc.text('Kepala SMAN 1 BP Mandoge', signLeftX, currentY);
+                doc.text('Guru Mata Pelajaran', signRightX, currentY);
+
+                // Ruang Tanda Tangan
+                currentY += 21;
+
+                // Baris 3: Nama Penandatangan + Garis Bawah
+                doc.setFont('helvetica', 'bold');
+                doc.text(kepsekNama, signLeftX, currentY);
+                const kepsekW = doc.getTextWidth(kepsekNama);
+                doc.setLineWidth(0.35);
+                doc.line(signLeftX, currentY + 0.8, signLeftX + kepsekW, currentY + 0.8);
+
+                doc.text(guruNama, signRightX, currentY);
+                const guruW = doc.getTextWidth(guruNama);
+                doc.line(signRightX, currentY + 0.8, signRightX + guruW, currentY + 0.8);
+
+                // Baris 4: NIP Penandatangan
+                currentY += 4.8;
+                doc.setFont('helvetica', 'normal');
+                doc.text(`NIP. ${kepsekNip}`, signLeftX, currentY);
+                doc.text(`NIP. ${guruNip}`, signRightX, currentY);
+
+                // 7. UNDUH FILE PDF
+                const safeNama = item.nama.replace(/[^a-zA-Z0-9]/g, '_');
+                const safeKelas = item.kelas.replace(/[^a-zA-Z0-9]/g, '_');
+                doc.save(`Laporan_PJJ_A4_${safeNama}_${safeKelas}.pdf`);
+
+                loadingOverlay.classList.add('hidden');
+                showToast("PDF Kertas A4 (1 Halaman Utuh) berhasil diunduh!");
+            } catch (err) {
+                loadingOverlay.classList.add('hidden');
+                showToast("Gagal membuat PDF: " + err.message, true);
+            }
+        }
+
+
+        // Download Excel Khusus Satu Guru (.xlsx)
+        function downloadExcelSingle(index) {
+            const item = pjjDataList[index];
+            const totalM = parseInt(item.hadir) + parseInt(item.izin) + parseInt(item.sakit) + parseInt(item.alpha);
+            
+            const kepsekN = document.getElementById('kepsekNama').value || "JUNAIDI, S.Pd., M.Si";
+            const kepsekP = document.getElementById('kepsekNip').value || "198105102010011013";
+
+            const excelData = [
+                ["PEMERINTAH PROVINSI SUMATERA UTARA - DINAS PENDIDIKAN"],
+                ["SMA NEGERI 1 BP MANDOGE"],
+                ["LAPORAN PELAKSANAAN PEMBELAJARAN JARAK JAUH (PJJ)"],
+                [""],
+                ["Nama Guru", item.nama],
+                ["NIP / NUPTK", item.nip],
+                ["Mata Pelajaran", item.mapel],
+                ["Jadwal Mengajar", item.jadwal.replace('T', ' Pukul ')],
+                ["Kelas", item.kelas],
+                ["Materi Pelajaran", item.materi],
+                ["Tujuan Pembelajaran", item.tujuan || "-"],
+                ["Hadir", item.hadir],
+                ["Izin", item.izin],
+                ["Sakit", item.sakit],
+                ["Tanpa Keterangan", item.alpha],
+                ["Total Murid", totalM],
+                [""],
+                ["Mengetahui,", "", "BP. Mandoge, " + new Date().toLocaleDateString('id-ID')],
+                ["Kepala SMAN 1 BP Mandoge", "", "Guru Mata Pelajaran"],
+                ["", "", ""],
+                ["", "", ""],
+                [kepsekN, "", item.nama],
+                ["NIP. " + kepsekP, "", "NIP. " + item.nip]
+            ];
+
+            const ws = XLSX.utils.aoa_to_sheet(excelData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Laporan PJJ");
+            XLSX.writeFile(wb, `Laporan_PJJ_${item.nama.replace(/\s+/g, '_')}_${item.kelas}.xlsx`);
+        }
+
+        // Export Semua (Panel Admin)
+        function exportAllExcel() {
+            if (pjjDataList.length === 0) { showToast("Data laporan masih kosong!", true); return; }
+
+            let exportRows = [
+                ["No", "Nama Guru", "NIP", "Mata Pelajaran", "Jadwal", "Kelas", "Materi", "Tujuan Pembelajaran", "Hadir", "Izin", "Sakit", "Tanpa Keterangan", "Total Siswa"]
+            ];
+
+            pjjDataList.forEach((item, idx) => {
+                const totalM = parseInt(item.hadir) + parseInt(item.izin) + parseInt(item.sakit) + parseInt(item.alpha);
+                exportRows.push([
+                    idx + 1, item.nama, item.nip, item.mapel, item.jadwal.replace('T', ' '), item.kelas, item.materi, item.tujuan || "-", item.hadir, item.izin, item.sakit, item.alpha, totalM
+                ]);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(exportRows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Rekap PJJ SMAN1BPM");
+            XLSX.writeFile(wb, `Rekapitulasi_PJJ_SMAN1_BPMandoge.xlsx`);
+        }
+
+        // Mulai aplikasi
+        renderTables();
+    </script>
+</body>
+</html>
